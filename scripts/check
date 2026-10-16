@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Format, lint, build and test. The one verification command for Halfway.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+DERIVED_DATA="${DERIVED_DATA:-$HOME/DerivedData/halfway-slot-0}"
+
+xcodegen generate --quiet
+swiftformat Halfway HalfwayTests --lint
+swiftlint lint --strict --quiet
+
+run_tests() {
+  xcodebuild test \
+    -project Halfway.xcodeproj \
+    -scheme Halfway \
+    -destination 'platform=macOS' \
+    -derivedDataPath "$DERIVED_DATA" \
+    "$@"
+}
+
+if command -v xcbeautify >/dev/null; then
+  run_tests "$@" | xcbeautify --quiet
+else
+  run_tests "$@"
+fi

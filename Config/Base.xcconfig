@@ -1,0 +1,6 @@
+// Shared build settings. Last.fm credentials come from the git-ignored
+// Secrets.xcconfig; copy Secrets.example.xcconfig to create it.
+LASTFM_API_KEY =
+LASTFM_API_SECRET =
+
+#include? "Secrets.xcconfig"

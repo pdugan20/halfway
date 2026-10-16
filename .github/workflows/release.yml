@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install tools
+        run: brew install xcodegen
+
+      - name: Write Last.fm credentials
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+        run: |
+          test -n "$LASTFM_API_KEY" && test -n "$LASTFM_API_SECRET"
+          printf 'LASTFM_API_KEY = %s\nLASTFM_API_SECRET = %s\n' "$LASTFM_API_KEY" "$LASTFM_API_SECRET" \
+            > Config/Secrets.xcconfig
+          xcodegen generate
+
+      - name: Import signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo -n "$CERT_BASE64" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+      - name: Build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          xcodebuild -project Halfway.xcodeproj \
+            -scheme Halfway \
+            -configuration Release \
+            -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            build
+
+      - name: Notarize
+        env:
+          API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+        run: |
+          APP_PATH="build/Build/Products/Release/Halfway.app"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          echo "$API_KEY" > "$KEY_PATH"
+          ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/Halfway.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Halfway.zip" \
+            --key "$KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait
+          xcrun stapler staple "$APP_PATH"
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/Build/Products/Release/Halfway.app"
+          DMG_PATH="Halfway-${GITHUB_REF_NAME}.dmg"
+          mkdir -p dmg-staging
+          cp -R "$APP_PATH" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "Halfway" -srcfolder dmg-staging -ov -format UDZO "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          files: ${{ env.DMG_PATH }}
+          generate_release_notes: true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f Config/Secrets.xcconfig

@@ -1,0 +1,59 @@
+name: Halfway
+options:
+  bundleIdPrefix: com.patrickdugan
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    DEVELOPMENT_TEAM: 2DS67Q47ES
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  Halfway:
+    type: application
+    platform: macOS
+    sources:
+      - path: Halfway
+        excludes:
+          - Resources/Info.plist
+          - Resources/Halfway.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patrickdugan.halfway
+        INFOPLIST_FILE: Halfway/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Halfway/Resources/Halfway.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Developer ID Application
+  HalfwayTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - HalfwayTests
+    dependencies:
+      - target: Halfway
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patrickdugan.halfway.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Halfway:
+    build:
+      targets:
+        Halfway: all
+        HalfwayTests: [test]
+    test:
+      targets:
+        - HalfwayTests

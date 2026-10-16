@@ -1,0 +1,53 @@
+# SwiftLint Config — Halfway
+# Parent: .swiftlint-airbnb.yml (Airbnb custom rules)
+
+parent_config: .swiftlint-airbnb.yml
+
+indentation: 2
+
+included:
+  - Halfway
+  - HalfwayTests
+
+excluded:
+  - .build
+  - DerivedData
+  - Halfway.xcodeproj
+
+line_length:
+  warning: 120
+  error: 150
+  ignores_urls: true
+  ignores_comments: true
+
+opt_in_rules:
+  - closure_spacing
+  - collection_alignment
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - first_where
+  - last_where
+  - modifier_order
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - switch_case_alignment
+  - unneeded_parentheses_in_closure_argument
+  - yoda_condition
+  - implicitly_unwrapped_optional
+  - unused_optional_binding
+  - fatal_error_message
+
+disabled_rules:
+  - todo
+  - trailing_comma
+  - identifier_name
+  - opening_brace
+  - blanket_disable_command
+
+file_length:
+  warning: 400
+  error: 600
+
+force_cast: warning
+force_try: warning
