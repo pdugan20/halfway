@@ -3,3 +3,6 @@ brew "xcodegen"
 brew "swiftlint"
 brew "swiftformat"
 brew "pre-commit"
+
+# GitHub Actions workflow validation
+brew "actionlint"

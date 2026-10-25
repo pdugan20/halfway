@@ -15,8 +15,10 @@ or four minutes, whichever comes first.
 - Offline queue that sends waiting scrobbles when you're back online, kept per account through sign-out
 - Welcome window on first launch for sign-in and Open at Login
 - Settings window (General and Account) for Open at Login, pausing scrobbles, and your account
-- Menu bar icon that fills as the current song nears its scrobble point
+- Drawn h menu bar icon that fills as the current song nears its scrobble point
 - Menu bar panel with the current song, a countdown to its scrobble, a Love button, and recent scrobbles
+- Native app icon with light and dark appearances, and a branded drag-to-install DMG
+- Quiet automatic updates, with progress and relaunch controls inside the menu and Settings
 
 Halfway runs in the App Sandbox and needs no Automation permission. It listens
 to the playback notification Music already broadcasts.
@@ -50,6 +52,16 @@ Watch what Music reports and what Halfway decides:
 ```bash
 /usr/bin/log stream --style compact --level info --predicate 'subsystem == "com.patrickdugan.halfway"'
 ```
+
+## Distribution
+
+`scripts/build-dmg` packages the last verified local build with the selected white background,
+drawn arrow, and lime notches. Pass an app path and output path to package another build.
+See [installer artwork and previews](docs/dmg-exploration.md) and [icon artwork](docs/icon-artwork.md).
+
+Tagging `vX.Y.Z` runs the release workflow: Developer ID signing, notarization, branded DMG,
+a signed Sparkle update feed, and a GitHub Release. See [automatic updates](docs/automatic-updates.md)
+for behavior and signing-key setup. Local DMGs retain the app's development signature and are not notarized.
 
 ## License
 

@@ -1,0 +1,41 @@
+#!/bin/bash
+# Called only by the tag workflow. Resume drafts, never rewrite a published release.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+TASK_TAG="${1:?Usage: scripts/publish-release TAG DMG APPCAST}"
+TASK_DMG="${2:?DMG path is required}"
+TASK_FEED="${3:?Appcast path is required}"
+TASK_REPO="pdugan20/halfway"
+[[ "$TASK_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+TASK_RELEASES=$(mktemp)
+trap 'rm -f "$TASK_RELEASES"' EXIT
+# A lookup failure must stop publication, not imply that the repository has no releases.
+gh api --paginate --slurp "repos/$TASK_REPO/releases?per_page=100" > "$TASK_RELEASES"
+TASK_STATE=$(python3 - "$TASK_TAG" "$TASK_RELEASES" <<'PY'
+import json
+import re
+import sys
+
+def version(tag):
+    if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+        raise SystemExit("Unexpected published version; inspect before replacing the update feed")
+    return tuple(map(int, tag[1:].split(".")))
+
+with open(sys.argv[2]) as file:
+    releases = [release for page in json.load(file) for release in page]
+requested = version(sys.argv[1])
+for release in releases:
+    if not release["draft"] and not release["prerelease"]:
+        if requested <= version(release["tag_name"]):
+            raise SystemExit("Refusing to replace the update feed with an older or published version")
+existing = next((release for release in releases if release["tag_name"] == sys.argv[1]), None)
+if existing and not existing["draft"]:
+    raise SystemExit("This release is published; refusing to replace its signed assets")
+print("resume" if existing else "create")
+PY
+)
+if [[ "$TASK_STATE" == "create" ]]; then
+  gh release create "$TASK_TAG" --repo "$TASK_REPO" --verify-tag --draft --generate-notes
+fi
+gh release upload "$TASK_TAG" --repo "$TASK_REPO" --clobber "$TASK_DMG" "$TASK_FEED"
+gh release edit "$TASK_TAG" --repo "$TASK_REPO" --draft=false --latest

@@ -1,6 +1,6 @@
 import AppKit
 
-/// Draws the menu bar icon: a ring that fills like a pie as the current song nears its scrobble point.
+/// Draws the Halfway mark, filling from the bottom as the current song nears its scrobble point.
 enum MenuBarIcon {
   nonisolated enum State: Equatable, Hashable, Sendable {
     /// Signed out or scrobbling turned off.
@@ -13,6 +13,7 @@ enum MenuBarIcon {
   }
 
   private static var cache: [State: NSImage] = [:]
+  private static let mark = NSImage(named: "MenuBarMark")
 
   static func image(for state: State) -> NSImage {
     if let cached = cache[state] { return cached }
@@ -35,34 +36,22 @@ enum MenuBarIcon {
     }
   }
 
-  nonisolated private static func draw(_ state: State, in rect: NSRect) {
-    let center = NSPoint(x: rect.midX, y: rect.midY)
-    let ring = NSBezierPath()
-    ring.appendArc(withCenter: center, radius: 7.25, startAngle: 0, endAngle: 360)
-    ring.lineWidth = 1.5
-    NSColor.black.set()
-    if state == .inactive {
-      ring.setLineDash([2.4, 1.8], count: 2, phase: 0)
-    }
-    ring.stroke()
-
-    let radius: CGFloat = 5
-    let fill = NSBezierPath()
+  private static func draw(_ state: State, in rect: NSRect) {
+    // The PDF shares the app icon's 1024-point canvas. Enlarge slightly for optical size in the menu bar.
+    let markRect = rect.insetBy(dx: -1, dy: -1)
     switch state {
     case .inactive:
-      return
-    case .idle:
-      fill.move(to: NSPoint(x: center.x, y: center.y + radius))
-      fill.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 270)
-      fill.close()
+      mark?.draw(in: markRect, from: .zero, operation: .sourceOver, fraction: 0.35)
+    case .idle, .scrobbled:
+      mark?.draw(in: markRect)
     case .progress(let fraction):
-      guard fraction > 0 else { return }
-      fill.move(to: center)
-      fill.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
-      fill.close()
-    case .scrobbled:
-      fill.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+      mark?.draw(in: markRect, from: .zero, operation: .sourceOver, fraction: 0.25)
+      NSGraphicsContext.saveGraphicsState()
+      let progress = min(max(fraction, 0), 1)
+      NSBezierPath(rect: NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * progress))
+        .addClip()
+      mark?.draw(in: markRect)
+      NSGraphicsContext.restoreGraphicsState()
     }
-    fill.fill()
   }
 }

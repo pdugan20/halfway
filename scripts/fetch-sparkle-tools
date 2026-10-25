@@ -1,0 +1,15 @@
+#!/bin/bash
+# Match the app's pinned Sparkle release and verify the tools before executing them.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+TASK_TOOLS="$PWD/build/sparkle-tools"
+TASK_URL=$(python3 -c 'import json; print(json.load(open("packaging/sparkle/tools.json"))["url"])')
+TASK_SHA=$(python3 -c 'import json; print(json.load(open("packaging/sparkle/tools.json"))["sha256"])')
+TASK_ARCHIVE="$TASK_TOOLS/distribution.tar.xz"
+mkdir -p "$TASK_TOOLS"
+if [[ ! -f "$TASK_ARCHIVE" ]]; then
+  curl --fail --location --retry 3 "$TASK_URL" -o "$TASK_ARCHIVE.download"
+  mv "$TASK_ARCHIVE.download" "$TASK_ARCHIVE"
+fi
+printf '%s  %s\n' "$TASK_SHA" "$TASK_ARCHIVE" | shasum -a 256 -c -
+tar -xf "$TASK_ARCHIVE" -C "$TASK_TOOLS"

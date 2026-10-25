@@ -1,0 +1,20 @@
+#!/bin/zsh
+# Package an already-built app with the selected Finder layout; never launches it.
+set -euo pipefail
+cd "${0:A:h}/.."
+
+TASK_APP="${1:-$HOME/DerivedData/halfway-slot-0/Build/Products/Debug/Halfway.app}"
+TASK_OUTPUT="${2:-$PWD/build/dmg/Halfway-local-preview.dmg}"
+TASK_TOOLS="$PWD/build/dmg-tools"
+test -d "$TASK_APP"
+codesign --verify --strict "$TASK_APP"
+mkdir -p "${TASK_OUTPUT:h}"
+if [[ ! -x "$TASK_TOOLS/bin/dmgbuild" ]]; then
+  python3 -m venv "$TASK_TOOLS"
+  "$TASK_TOOLS/bin/python" -m pip install -r packaging/dmg/requirements.txt
+fi
+"$TASK_TOOLS/bin/dmgbuild" -s packaging/dmg/settings.py -D "app=$TASK_APP" \
+  -D "artwork=$PWD/packaging/dmg/background.tiff" \
+  Halfway "$TASK_OUTPUT"
+hdiutil verify "$TASK_OUTPUT"
+print "Disk image: $TASK_OUTPUT"

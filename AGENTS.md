@@ -37,7 +37,8 @@ macOS menu bar app (SwiftUI `MenuBarExtra`) that scrobbles Apple Music plays to 
 
 ## Constraints
 
-- Stay App Sandbox compatible (future Mac App Store release). Entitlements: `app-sandbox`, `network.client` only.
+- Stay App Sandbox compatible (future Mac App Store release). Entitlements: `app-sandbox`, `network.client`, and Sparkle’s two app-scoped installer/status Mach lookup
+  exceptions for direct-distribution updates (see `docs/automatic-updates.md`).
   Adding Apple Events or a scripting-targets exception needs a stated reason.
 - Do not use private frameworks (e.g. MediaRemote).
 - Swift 6 with `MainActor` default isolation; mark pure model types `nonisolated`.
@@ -49,9 +50,9 @@ Airbnb Swift style via SwiftFormat and SwiftLint (`.swiftformat`, `.swiftlint.ym
 
 ## Release
 
-Tag `vX.Y.Z` to run `.github/workflows/release.yml`: Developer ID signing, notarization, DMG, GitHub Release.
+Tag `vX.Y.Z` to run `.github/workflows/release.yml`: Developer ID archive/export, notarization, branded DMG, signed Sparkle feed, GitHub Release.
 Required secrets: `DEVELOPER_ID_CERT_BASE64`, `DEVELOPER_ID_CERT_PASSWORD`, `NOTARY_API_KEY`, `NOTARY_API_KEY_ID`,
-`NOTARY_API_ISSUER`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`.
+`NOTARY_API_ISSUER`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`, `SPARKLE_PRIVATE_KEY`.
 
 ## Code review rules
 

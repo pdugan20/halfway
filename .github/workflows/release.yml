@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: halfway-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-26
@@ -13,8 +17,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Validate release inputs
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test -n "$SPARKLE_PRIVATE_KEY"
+
       - name: Install tools
-        run: brew install xcodegen
+        run: |
+          brew install xcodegen
+          scripts/fetch-sparkle-tools
+          python3 scripts/check-release-config.py
 
       - name: Write Last.fm credentials
         env:
@@ -43,49 +57,75 @@ jobs:
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-      - name: Build
+      # Export re-signs Sparkle's nested XPC services and helpers with our Developer ID.
+      - name: Archive and export
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          xcodebuild -project Halfway.xcodeproj \
-            -scheme Halfway \
-            -configuration Release \
-            -derivedDataPath build \
-            MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
-            build
+          xcodebuild archive -project Halfway.xcodeproj -scheme Halfway -configuration Release \
+            -derivedDataPath "$HOME/DerivedData/halfway-slot-0" -archivePath "$RUNNER_TEMP/Halfway.xcarchive" \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Halfway.xcarchive" \
+            -exportOptionsPlist packaging/ExportOptions.plist -exportPath "$RUNNER_TEMP/export"
+          APP_PATH="$RUNNER_TEMP/export/Halfway.app"
+          codesign --verify --deep --strict "$APP_PATH"
+          lipo "$APP_PATH/Contents/MacOS/Halfway" -verify_arch arm64
+          lipo "$APP_PATH/Contents/MacOS/Halfway" -verify_arch x86_64
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Notarize
+      - name: Notarize app
         env:
           API_KEY: ${{ secrets.NOTARY_API_KEY }}
           API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
           API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
         run: |
-          APP_PATH="build/Build/Products/Release/Halfway.app"
           KEY_PATH="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
-          echo "$API_KEY" > "$KEY_PATH"
+          umask 077
+          printf '%s' "$API_KEY" > "$KEY_PATH"
           ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/Halfway.zip"
           xcrun notarytool submit "$RUNNER_TEMP/Halfway.zip" \
             --key "$KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait
           xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
 
       - name: Create DMG
         run: |
-          APP_PATH="build/Build/Products/Release/Halfway.app"
-          DMG_PATH="Halfway-${GITHUB_REF_NAME}.dmg"
-          mkdir -p dmg-staging
-          cp -R "$APP_PATH" dmg-staging/
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "Halfway" -srcfolder dmg-staging -ov -format UDZO "$DMG_PATH"
+          mkdir -p build/release
+          DMG_PATH="$PWD/build/release/Halfway-${GITHUB_REF_NAME}.dmg"
+          scripts/build-dmg "$APP_PATH" "$DMG_PATH"
+          codesign --sign "Developer ID Application" --timestamp \
+            --identifier com.patrickdugan.halfway.dmg "$DMG_PATH"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          files: ${{ env.DMG_PATH }}
-          generate_release_notes: true
+      - name: Notarize DMG
+        env:
+          API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --key "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8" \
+            --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+          codesign --verify --strict "$DMG_PATH"
+
+      - name: Sign and validate update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          scripts/generate-update-feed "$PWD/build/release" "$GITHUB_REF_NAME"
+          swift scripts/verify-update-feed.swift build/release/appcast.xml "$DMG_PATH" \
+            "$APP_PATH/Contents/Info.plist" "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER"
+
+      # Create privately, upload both assets, then publish so latest never points at an incomplete release.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/publish-release "$GITHUB_REF_NAME" "$DMG_PATH" build/release/appcast.xml
 
       - name: Cleanup
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
-          rm -f Config/Secrets.xcconfig
+          rm -f Config/Secrets.xcconfig "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/cert.p12"

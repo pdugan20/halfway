@@ -3,10 +3,11 @@ import SwiftUI
 @main
 struct HalfwayApp: App {
   @State private var model = AppModel()
+  @StateObject private var updater = AppUpdater()
 
   var body: some Scene {
     MenuBarExtra {
-      MenuContent(model: model)
+      MenuContent(model: model, updater: updater)
     } label: {
       Image(nsImage: MenuBarIcon.image(for: model.menuBarIcon))
         .accessibilityLabel(MenuBarIcon.description(of: model.menuBarIcon))
@@ -24,7 +25,7 @@ struct HalfwayApp: App {
     .defaultLaunchBehavior(model.hasCompletedSetup ? .suppressed : .presented)
 
     Settings {
-      SettingsView(model: model)
+      SettingsView(model: model, updater: updater)
     }
   }
 }

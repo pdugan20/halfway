@@ -26,6 +26,24 @@
   <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
   <key>LSUIElement</key>
   <true/>
+  <key>SUFeedURL</key>
+  <string>https://github.com/pdugan20/halfway/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>GL967yi6dhrFmt8Ltsofq13IprwLzfMVvGgopjqPrfk=</string>
+  <key>SUEnableInstallerLauncherService</key>
+  <true/>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+  <key>SUAutomaticallyUpdate</key>
+  <true/>
+  <key>SUScheduledCheckInterval</key>
+  <integer>86400</integer>
+  <key>SUEnableSystemProfiling</key>
+  <false/>
+  <key>SUVerifyUpdateBeforeExtraction</key>
+  <true/>
+  <key>SURequireSignedFeed</key>
+  <true/>
   <key>LastFMAPIKey</key>
   <string>$(LASTFM_API_KEY)</string>
   <key>LastFMAPISecret</key>

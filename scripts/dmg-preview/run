@@ -1,0 +1,31 @@
+#!/bin/zsh
+set -euo pipefail
+cd "${0:A:h}/../.."
+TASK_BUILD="$PWD/build/dmg-preview"
+mkdir -p "$TASK_BUILD"
+ICON_TOOL="$(dirname "$(xcode-select -p)")/Applications/Icon Composer.app/Contents/Executables/ictool"
+for rendition in Default Dark; do
+  "$ICON_TOOL" Halfway/Resources/AppIcon.icon --export-image \
+    --output-file "$TASK_BUILD/icon-${(L)rendition}.png" --platform macOS \
+    --rendition "$rendition" --width 512 --height 512 --scale 1 --design-generation 26 >/dev/null
+done
+TASK_APP="$TASK_BUILD/Halfway DMG Preview.app"
+mkdir -p "$TASK_APP/Contents/MacOS"
+cat > "$TASK_APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.patrickdugan.halfway.dmg-preview</string>
+<key>CFBundleName</key><string>Halfway DMG Preview</string>
+<key>CFBundleExecutable</key><string>dmg-preview</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+PLIST
+xcrun swiftc -swift-version 6 -default-isolation MainActor \
+  scripts/dmg-preview/Preview.swift -o "$TASK_APP/Contents/MacOS/dmg-preview"
+if (( $# )); then
+  exec "$TASK_APP/Contents/MacOS/dmg-preview" "$TASK_BUILD" "$@"
+else
+  open "$TASK_APP" --args "$TASK_BUILD"
+fi

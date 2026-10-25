@@ -2,11 +2,12 @@ import SwiftUI
 
 struct SettingsView: View {
   @Bindable var model: AppModel
+  @ObservedObject var updater: AppUpdater
 
   var body: some View {
     TabView {
       Tab("General", systemImage: "gearshape") {
-        GeneralSettings(model: model)
+        GeneralSettings(model: model, updater: updater)
       }
       Tab("Account", systemImage: "person.crop.circle") {
         AccountSettings(model: model)
@@ -24,6 +25,7 @@ private struct GeneralSettings: View {
   """
 
   @Bindable var model: AppModel
+  @ObservedObject var updater: AppUpdater
 
   var body: some View {
     Form {
@@ -46,10 +48,11 @@ private struct GeneralSettings: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
+      UpdateSettings(updater: updater)
     }
     .formStyle(.grouped)
     .scrollDisabled(true)
-    .frame(height: 260)
+    .frame(height: 440)
   }
 }
 

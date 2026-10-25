@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install tools
-        run: brew install xcodegen swiftlint swiftformat xcbeautify
+        run: brew install xcodegen swiftlint swiftformat xcbeautify actionlint
 
       - name: Format, lint, build and test
         run: scripts/check CODE_SIGNING_ALLOWED=NO

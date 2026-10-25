@@ -3,6 +3,7 @@ import SwiftUI
 /// The menu bar panel: what's playing, its scrobble status, recent plays, and the way to Settings.
 struct MenuContent: View {
   let model: AppModel
+  @ObservedObject var updater: AppUpdater
   @Environment(\.openSettings) private var openSettings
 
   var body: some View {
@@ -22,6 +23,7 @@ struct MenuContent: View {
         RecentList(items: Array(model.recent.prefix(5)))
       }
       Divider()
+      UpdateStatusRow(updater: updater, driver: updater.userDriver)
       HStack {
         Button("Settings…") {
           openSettings()
