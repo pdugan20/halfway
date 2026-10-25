@@ -22,7 +22,8 @@ run_tests() {
 }
 
 if command -v xcbeautify >/dev/null; then
-  run_tests "$@" | xcbeautify --quiet
+  mkdir -p build
+  run_tests "$@" 2>&1 | tee build/xcodebuild-check.log | xcbeautify --quiet
 else
   run_tests "$@"
 fi
