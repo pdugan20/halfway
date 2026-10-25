@@ -3,6 +3,12 @@ import Foundation
 
 /// Minimal Last.fm API client: desktop auth, now playing and scrobbling.
 nonisolated struct LastFMClient: Sendable {
+  /// What Last.fm did with one scrobble in a batch.
+  enum Outcome: Equatable, Sendable {
+    case accepted
+    case ignored(String)
+  }
+
   enum Failure: Error, Equatable {
     case api(code: Int, message: String)
     case badResponse
@@ -95,8 +101,8 @@ nonisolated struct LastFMClient: Sendable {
     _ = try await call("track.updateNowPlaying", params, sessionKey: sessionKey)
   }
 
-  /// Sends up to 50 scrobbles. Returns how many Last.fm accepted and ignored.
-  func scrobble(_ scrobbles: [Scrobble], sessionKey: String) async throws -> (accepted: Int, ignored: Int) {
+  /// Sends up to 50 scrobbles and returns one outcome per scrobble, in order.
+  func scrobble(_ scrobbles: [Scrobble], sessionKey: String) async throws -> [Outcome] {
     precondition(scrobbles.count <= 50, "Last.fm accepts at most 50 scrobbles per request")
     var params: [String: String] = [:]
     for (index, item) in scrobbles.enumerated() {
@@ -108,10 +114,47 @@ nonisolated struct LastFMClient: Sendable {
       params["duration[\(index)]"] = item.track.duration.map { String(Int($0.rounded())) }
     }
     let json = try await call("track.scrobble", params, sessionKey: sessionKey)
-    guard let attributes = (json["scrobbles"] as? [String: Any])?["@attr"] as? [String: Any] else {
-      throw Failure.badResponse
+    return try Self.outcomes(from: json, count: scrobbles.count)
+  }
+
+  func love(_ track: Track, sessionKey: String) async throws {
+    _ = try await call("track.love", ["artist": track.artist, "track": track.title], sessionKey: sessionKey)
+  }
+
+  func unlove(_ track: Track, sessionKey: String) async throws {
+    _ = try await call("track.unlove", ["artist": track.artist, "track": track.title], sessionKey: sessionKey)
+  }
+
+  /// Whether `username` has loved `track` on Last.fm.
+  func isLoved(_ track: Track, username: String) async throws -> Bool {
+    let json = try await call(
+      "track.getInfo",
+      ["artist": track.artist, "track": track.title, "username": username, "autocorrect": "1"]
+    )
+    guard let info = json["track"] as? [String: Any] else { throw Failure.badResponse }
+    return Self.int(info["userloved"]) == 1
+  }
+
+  /// Reads per-scrobble results. Last.fm returns an object for one scrobble and an array for several.
+  static func outcomes(from json: [String: Any], count: Int) throws -> [Outcome] {
+    guard let scrobbles = json["scrobbles"] as? [String: Any] else { throw Failure.badResponse }
+    let entries: [[String: Any]] = if let list = scrobbles["scrobble"] as? [[String: Any]] {
+      list
+    } else if let single = scrobbles["scrobble"] as? [String: Any] {
+      [single]
+    } else {
+      []
     }
-    return (Self.int(attributes["accepted"]), Self.int(attributes["ignored"]))
+    guard entries.count == count else {
+      // Results can't be matched to plays. The request succeeded, so treat them as sent
+      // rather than resending and risking duplicates.
+      return Array(repeating: .accepted, count: count)
+    }
+    return entries.map { entry in
+      let ignored = entry["ignoredMessage"] as? [String: Any] ?? [:]
+      guard int(ignored["code"]) != 0 else { return .accepted }
+      return .ignored(ignored["#text"] as? String ?? "Ignored by Last.fm")
+    }
   }
 
   // MARK: Private

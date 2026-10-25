@@ -16,6 +16,11 @@ final class AppModel {
   private(set) var account: Account = .signedOut
   private(set) var play: PlaybackTracker.Play?
   private(set) var pendingCount = 0
+  private(set) var recent: [RecentScrobble] = []
+  /// Whether the current track is loved on Last.fm; nil while unknown.
+  private(set) var isCurrentTrackLoved: Bool?
+  /// Progress toward the current track's scrobble point, in sixteenths, for the menu bar icon.
+  private(set) var scrobbleProgress = 0.0
   private(set) var message: String?
   private(set) var opensAtLogin = SMAppService.mainApp.status == .enabled
   /// macOS registered the login item but the user switched it off in System Settings.
@@ -33,10 +38,14 @@ final class AppModel {
   @ObservationIgnored private let logger = Logger(subsystem: "com.patrickdugan.halfway", category: "scrobble")
   @ObservationIgnored private var tracker = PlaybackTracker()
   @ObservationIgnored private var queue = ScrobbleQueue()
+  @ObservationIgnored private var recentStore = RecentScrobbles()
   @ObservationIgnored private var session: StoredSession?
+  @ObservationIgnored private var lovedTrackID: String?
   @ObservationIgnored private var tickTask: Task<Void, Never>?
+  @ObservationIgnored private var progressTask: Task<Void, Never>?
   @ObservationIgnored private var signInTask: Task<Void, Never>?
   @ObservationIgnored private var retryTask: Task<Void, Never>?
+  @ObservationIgnored private var lovedTask: Task<Void, Never>?
   @ObservationIgnored private var isFlushing = false
 
   init() {
@@ -50,7 +59,8 @@ final class AppModel {
       session = stored
       account = .signedIn(username: stored.username)
     }
-    pendingCount = queue.items.count
+    recent = recentStore.items
+    refreshPendingCount()
 
     observer.start { [weak self] snapshot in self?.handle(snapshot) }
     pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -61,9 +71,10 @@ final class AppModel {
     flush()
   }
 
-  var menuBarSymbol: String {
-    if case .signedIn = account, isScrobblingEnabled { return "circle.lefthalf.filled" }
-    return "circle.dashed"
+  var menuBarIcon: MenuBarIcon.State {
+    guard isSignedIn, isScrobblingEnabled else { return .inactive }
+    guard let play, PlaybackTracker.threshold(for: play.track) != nil else { return .idle }
+    return play.scrobbled ? .scrobbled : .progress(scrobbleProgress)
   }
 
   var profileURL: URL? {
@@ -81,64 +92,6 @@ final class AppModel {
   func completeSetup() {
     hasCompletedSetup = true
     UserDefaults.standard.set(true, forKey: "hasCompletedSetup")
-  }
-
-  // MARK: Account
-
-  func signIn() {
-    guard isConfigured else { return }
-    signInTask?.cancel()
-    account = .waitingForApproval
-    message = nil
-    signInTask = Task { [weak self] in
-      guard let self else { return }
-      do {
-        let token = try await client.getToken()
-        NSWorkspace.shared.open(client.authorizationURL(token: token))
-        // Tokens last 60 minutes; give the user ten to approve.
-        let deadline = Date.now.addingTimeInterval(600)
-        while Date.now < deadline {
-          try await Task.sleep(for: .seconds(3))
-          do {
-            let stored = try await client.getSession(token: token)
-            SessionStore.save(stored)
-            session = stored
-            account = .signedIn(username: stored.username)
-            logger.info("signed in as \(stored.username, privacy: .public)")
-            // Bring the welcome or Settings window back from the browser.
-            NSApp.activate()
-            flush()
-            return
-          } catch LastFMClient.Failure.api(code: 14, message: _) {
-            continue // Not approved yet.
-          }
-        }
-        account = .signedOut
-        message = "Sign-in timed out. Try again."
-      } catch is CancellationError {
-        // Cancelled by the user.
-      } catch {
-        account = .signedOut
-        message = "Couldn't sign in. \(Self.describe(error))"
-      }
-    }
-  }
-
-  func cancelSignIn() {
-    signInTask?.cancel()
-    signInTask = nil
-    account = .signedOut
-  }
-
-  func signOut() {
-    signInTask?.cancel()
-    retryTask?.cancel()
-    SessionStore.clear()
-    session = nil
-    queue.removeAll()
-    pendingCount = 0
-    account = .signedOut
-    message = nil
   }
 
   func setOpensAtLogin(_ enabled: Bool) {
@@ -165,12 +118,61 @@ final class AppModel {
     SMAppService.openSystemSettingsLoginItems()
   }
 
-  func sendNow() {
-    retryTask?.cancel()
-    flush()
+  // MARK: Account
+
+  func signIn() {
+    guard isConfigured else { return }
+    signInTask?.cancel()
+    account = .waitingForApproval
+    message = nil
+    signInTask = Task { [weak self] in
+      guard let self else { return }
+      do {
+        let token = try await client.getToken()
+        NSWorkspace.shared.open(client.authorizationURL(token: token))
+        // Tokens last 60 minutes; give the user ten to approve.
+        let deadline = Date.now.addingTimeInterval(600)
+        while Date.now < deadline {
+          try await Task.sleep(for: .seconds(3))
+          do {
+            try await finishSignIn(client.getSession(token: token))
+            return
+          } catch LastFMClient.Failure.api(code: 14, message: _) {
+            continue // Not approved yet.
+          }
+        }
+        account = .signedOut
+        message = "Sign-in timed out. Try again."
+      } catch is CancellationError {
+        // Cancelled by the user.
+      } catch {
+        account = .signedOut
+        message = "Couldn't sign in. \(Self.describe(error))"
+      }
+    }
   }
 
-  // MARK: Playback
+  func cancelSignIn() {
+    signInTask?.cancel()
+    signInTask = nil
+    account = .signedOut
+  }
+
+  /// Signs out but keeps waiting scrobbles; they're sent if the same account signs in again.
+  func signOut() {
+    signInTask?.cancel()
+    retryTask?.cancel()
+    lovedTask?.cancel()
+    SessionStore.clear()
+    session = nil
+    account = .signedOut
+    message = nil
+    lovedTrackID = nil
+    isCurrentTrackLoved = nil
+    refreshPendingCount()
+  }
+
+  // MARK: Private
 
   private static func describe(_ error: Error) -> String {
     switch error {
@@ -181,6 +183,23 @@ final class AppModel {
     }
   }
 
+  private func finishSignIn(_ stored: StoredSession) {
+    SessionStore.save(stored)
+    session = stored
+    account = .signedIn(username: stored.username)
+    logger.info("signed in as \(stored.username, privacy: .public)")
+    // Bring the welcome or Settings window back from the browser.
+    NSApp.activate()
+    refreshPendingCount()
+    lovedTrackID = nil
+    if let track = play?.track { refreshLovedState(for: track) }
+    flush()
+  }
+
+  private func refreshPendingCount() {
+    pendingCount = session.map { queue.items(for: $0.username).count } ?? 0
+  }
+
   private func handle(_ snapshot: PlayerSnapshot) {
     perform(tracker.handle(snapshot, at: .now))
     scheduleTick()
@@ -189,6 +208,7 @@ final class AppModel {
   private func scheduleTick() {
     tickTask?.cancel()
     play = tracker.current
+    refreshProgress()
     guard let deadline = tracker.nextDeadline(at: .now) else { return }
     tickTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(max(0.1, deadline.timeIntervalSinceNow + 0.05)))
@@ -198,12 +218,55 @@ final class AppModel {
     }
   }
 
+  /// Updates the menu bar progress in sixteenths, waking once per step while playing.
+  private func refreshProgress() {
+    progressTask?.cancel()
+    guard let play, !play.scrobbled, let threshold = PlaybackTracker.threshold(for: play.track) else {
+      scrobbleProgress = 0
+      return
+    }
+    scrobbleProgress = (min(play.listened(at: .now) / threshold, 1) * 16).rounded(.down) / 16
+    guard play.isPlaying else { return }
+    progressTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(max(1, threshold / 16)))
+      guard !Task.isCancelled else { return }
+      self?.refreshProgress()
+    }
+  }
+}
+
+// MARK: - Love
+
+extension AppModel {
+  func toggleLove() {
+    guard let session, let track = play?.track, let loved = isCurrentTrackLoved else { return }
+    isCurrentTrackLoved = !loved
+    Task { [weak self, client] in
+      do {
+        if loved {
+          try await client.unlove(track, sessionKey: session.key)
+        } else {
+          try await client.love(track, sessionKey: session.key)
+        }
+      } catch {
+        guard let self, lovedTrackID == track.id else { return }
+        isCurrentTrackLoved = loved
+        message = "Couldn't update Love on Last.fm. \(Self.describe(error))"
+      }
+    }
+  }
+}
+
+// MARK: - Playback and sending
+
+extension AppModel {
   private func perform(_ actions: [PlaybackTracker.Action]) {
     play = tracker.current
-    guard isScrobblingEnabled, let session else { return }
     for action in actions {
       switch action {
       case .nowPlaying(let track):
+        refreshLovedState(for: track)
+        guard isScrobblingEnabled, let session else { continue }
         Task { [client, logger] in
           do {
             try await client.updateNowPlaying(track, sessionKey: session.key)
@@ -211,24 +274,51 @@ final class AppModel {
             logger.error("now playing failed: \(String(describing: error), privacy: .public)")
           }
         }
-      case .scrobble(let scrobble):
+      case .scrobble(var scrobble):
+        guard isScrobblingEnabled, let session else { continue }
+        scrobble.username = session.username
         let track = scrobble.track
         logger.info("scrobble due: \(track.artist, privacy: .public) – \(track.title, privacy: .public)")
         queue.append(scrobble)
-        pendingCount = queue.items.count
+        recentStore.record(scrobble)
+        recent = recentStore.items
+        refreshPendingCount()
         flush()
       }
     }
   }
 
-  // MARK: Sending
+  private func refreshLovedState(for track: Track) {
+    guard track.id != lovedTrackID else { return }
+    lovedTask?.cancel()
+    lovedTrackID = track.id
+    isCurrentTrackLoved = nil
+    guard let session else { return }
+    lovedTask = Task { [weak self, client] in
+      let loved = try? await client.isLoved(track, username: session.username)
+      guard !Task.isCancelled, let self, lovedTrackID == track.id else { return }
+      isCurrentTrackLoved = loved ?? false
+    }
+  }
+
+  func sendNow() {
+    retryTask?.cancel()
+    flush()
+  }
 
   private func flush() {
-    guard !isFlushing, let session, !queue.items.isEmpty else { return }
+    let expired = queue.pruneExpired(now: .now)
+    if !expired.isEmpty {
+      recentStore.update(Dictionary(uniqueKeysWithValues: expired.map { ($0, .ignored) }))
+      recent = recentStore.items
+      refreshPendingCount()
+    }
+    guard !isFlushing, let session else { return }
+    let batch = Array(queue.items(for: session.username).prefix(50))
+    guard !batch.isEmpty else { return }
     isFlushing = true
-    let batch = Array(queue.items.prefix(50))
     Task { [weak self, client] in
-      let result: Result<(accepted: Int, ignored: Int), LastFMClient.Failure>
+      let result: Result<[LastFMClient.Outcome], LastFMClient.Failure>
       do {
         result = try await .success(client.scrobble(batch, sessionKey: session.key))
       } catch let failure as LastFMClient.Failure {
@@ -240,14 +330,22 @@ final class AppModel {
     }
   }
 
-  private func finishFlush(batch: [Scrobble], result: Result<(accepted: Int, ignored: Int), LastFMClient.Failure>) {
+  private func finishFlush(batch: [Scrobble], result: Result<[LastFMClient.Outcome], LastFMClient.Failure>) {
     isFlushing = false
+    let ids = Set(batch.map(\.id))
     switch result {
-    case .success(let counts):
-      logger.info("sent \(batch.count) scrobbles: \(counts.accepted) accepted, \(counts.ignored) ignored")
-      queue.removeFirst(batch.count)
+    case .success(let outcomes):
+      var statuses: [UUID: RecentScrobble.Status] = [:]
+      for (scrobble, outcome) in zip(batch, outcomes) {
+        statuses[scrobble.id] = outcome == .accepted ? .sent : .ignored
+        if case .ignored(let reason) = outcome {
+          logger.info("ignored: \(scrobble.track.title, privacy: .public) – \(reason, privacy: .public)")
+        }
+      }
+      logger.info("sent \(batch.count) scrobbles")
+      queue.remove(ids: ids)
+      recentStore.update(statuses)
       message = nil
-      pendingCount = queue.items.count
       flush()
     case .failure(let failure) where failure.needsReauth:
       SessionStore.clear()
@@ -265,9 +363,11 @@ final class AppModel {
     case .failure(let failure):
       // Last.fm rejected the request itself; drop it so the queue can't jam.
       logger.error("dropping \(batch.count) scrobbles: \(String(describing: failure), privacy: .public)")
-      queue.removeFirst(batch.count)
-      pendingCount = queue.items.count
+      queue.remove(ids: ids)
+      recentStore.update(Dictionary(uniqueKeysWithValues: ids.map { ($0, .rejected) }))
       message = "Last.fm rejected some scrobbles. \(Self.describe(failure))"
     }
+    recent = recentStore.items
+    refreshPendingCount()
   }
 }

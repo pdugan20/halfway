@@ -32,4 +32,32 @@ struct LastFMTests {
     #expect(snapshot.track?.id == "-1234567")
     #expect(snapshot.track?.albumArtist == nil)
   }
+
+  @Test
+  func readsOutcomesForSeveralScrobbles() throws {
+    let json: [String: Any] = [
+      "scrobbles": [
+        "scrobble": [
+          ["ignoredMessage": ["code": "0", "#text": ""]],
+          ["ignoredMessage": ["code": "3", "#text": "Timestamp too old"]],
+        ],
+        "@attr": ["accepted": 1, "ignored": 1],
+      ]
+    ]
+    #expect(try LastFMClient.outcomes(from: json, count: 2) == [.accepted, .ignored("Timestamp too old")])
+  }
+
+  @Test
+  func readsOutcomeForOneScrobble() throws {
+    let json: [String: Any] = [
+      "scrobbles": ["scrobble": ["ignoredMessage": ["code": "0", "#text": ""]], "@attr": ["accepted": 1]]
+    ]
+    #expect(try LastFMClient.outcomes(from: json, count: 1) == [.accepted])
+  }
+
+  @Test
+  func unmatchedOutcomesCountAsSentToAvoidDuplicates() throws {
+    let json: [String: Any] = ["scrobbles": ["@attr": ["accepted": 2, "ignored": 0]]]
+    #expect(try LastFMClient.outcomes(from: json, count: 2) == [.accepted, .accepted])
+  }
 }

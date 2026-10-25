@@ -22,20 +22,23 @@ Sign in and out, now playing, scrobbles, offline queue, pause scrobbling, Open
 at Login, quit, a first-launch welcome window, a Settings window (General and
 Account), and an Icon Composer app icon.
 
-## Deferred
+## Scope decisions (2026-10-24)
 
-| Item | Why deferred |
-| --- | --- |
-| Loved tracks (sync Apple Music favorites to Last.fm loves) | Not needed to replace NepTunes' scrobbling |
-| Recent scrobble history in the menu | Last.fm already shows it; adds storage and UI |
-| Listening stats | Same |
-| Players other than Apple Music | Each player broadcasts differently |
-| Picking up a song already playing at launch | Music only reports on change; asking it needs Apple Events |
-| Scripting-targets fallback for missing track length | Only if the playback test shows streamed tracks lack `Total Time` |
-| Keeping waiting scrobbles across sign-out | Sign-out currently clears the queue |
-| About window | Version shows in Settings › Account |
-| Auto-updates for DMG builds (Sparkle) | Not needed until there are outside users |
-| Mac App Store build and listing | After the DMG release; name availability unchecked |
+| Item | Decision | Tracking |
+| --- | --- | --- |
+| Keep waiting scrobbles across sign-out | Built. Plays are tagged with their account and sent only to it; plays over 14 days old are dropped because Last.fm ignores them | — |
+| Recent scrobbles in the menu | Built. Last 10 kept, 5 shown, with sent, waiting, ignored or rejected status | — |
+| Love button | Built. Heart in the menu loves or unloves the current track; state comes from `track.getInfo` | — |
+| Menu bar icon progress | Built. Ring fills in sixteenths toward the scrobble point | — |
+| About link | Built. Settings › Account opens the standard About panel | — |
+| Real playback test | Next, owner-run | [#1](https://github.com/pdugan20/halfway/issues/1) |
+| Sync Apple Music favorites to Last.fm loves | After the playback test shows what Music reports | [#2](https://github.com/pdugan20/halfway/issues/2) |
+| Fallback for missing streamed track length | Only if the playback test shows the gap | [#3](https://github.com/pdugan20/halfway/issues/3) |
+| Sparkle auto-updates and first DMG release | With the release batch | [#4](https://github.com/pdugan20/halfway/issues/4) |
+| Pick up a song already playing at launch | Deferred; needs Apple Events | [#5](https://github.com/pdugan20/halfway/issues/5) |
+| Mac App Store build and listing | After the DMG release | [#6](https://github.com/pdugan20/halfway/issues/6) |
+| Listening stats | Won't build; Last.fm already does this | — |
+| Players other than Apple Music | Won't build; keeps Halfway an Apple Music tool | — |
 
 ## Evidence so far
 

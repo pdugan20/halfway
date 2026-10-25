@@ -72,11 +72,15 @@ private struct AccountSettings: View {
       }
       Section {
         LabeledContent("Version", value: Self.version)
+        Button("About Halfway") {
+          NSApp.orderFrontStandardAboutPanel(nil)
+          NSApp.activate()
+        }
       }
     }
     .formStyle(.grouped)
     .scrollDisabled(true)
-    .frame(height: 220)
+    .frame(height: 250)
   }
 
   private static var version: String {

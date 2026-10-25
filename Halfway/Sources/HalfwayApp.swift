@@ -8,8 +8,8 @@ struct HalfwayApp: App {
     MenuBarExtra {
       MenuContent(model: model)
     } label: {
-      Image(systemName: model.menuBarSymbol)
-        .accessibilityLabel("Halfway")
+      Image(nsImage: MenuBarIcon.image(for: model.menuBarIcon))
+        .accessibilityLabel(MenuBarIcon.description(of: model.menuBarIcon))
     }
     .menuBarExtraStyle(.window)
 
