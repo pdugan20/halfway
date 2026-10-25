@@ -137,7 +137,7 @@ private struct LoveButton: View {
         .contentTransition(.symbolEffect(.replace))
     }
     .buttonStyle(.borderless)
-    .disabled(model.isCurrentTrackLoved == nil)
+    .disabled(model.isCurrentTrackLoved == nil || model.isUpdatingLove)
     .help(isLoved ? "Unlove on Last.fm" : "Love on Last.fm")
     .accessibilityLabel(isLoved ? "Unlove on Last.fm" : "Love on Last.fm")
   }

@@ -157,6 +157,15 @@ nonisolated struct LastFMClient: Sendable {
     }
   }
 
+  static func describe(_ error: Error) -> String {
+    switch error {
+    case LastFMClient.Failure.api(_, let message): message
+    case LastFMClient.Failure.network(let message): message
+    case LastFMClient.Failure.badResponse: "Last.fm sent an unexpected response."
+    default: error.localizedDescription
+    }
+  }
+
   // MARK: Private
 
   private static func int(_ value: Any?) -> Int {

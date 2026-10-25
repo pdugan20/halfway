@@ -7,7 +7,7 @@ struct UpdateSettings: View {
     Section {
       Toggle("Keep Halfway up to date", isOn: Binding(
         get: { updater.keepsUpToDate },
-        set: updater.setKeepsUpToDate
+        set: { updater.setKeepsUpToDate($0) }
       ))
       UpdateStatusRow(updater: updater, driver: updater.userDriver, showsCheck: true)
     } header: {

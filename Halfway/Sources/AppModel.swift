@@ -32,35 +32,38 @@ final class AppModel {
 
   let isConfigured: Bool
 
-  @ObservationIgnored private let client: LastFMClient
+  @ObservationIgnored private let client: any LastFMService
+  @ObservationIgnored private let accountIO: AppModelServices.AccountIO
   @ObservationIgnored private let observer = MusicObserver()
   @ObservationIgnored private let pathMonitor = NWPathMonitor()
   @ObservationIgnored private let logger = Logger(subsystem: "com.patrickdugan.halfway", category: "scrobble")
   @ObservationIgnored private var tracker = PlaybackTracker()
-  @ObservationIgnored private var queue = ScrobbleQueue()
-  @ObservationIgnored private var recentStore = RecentScrobbles()
+  @ObservationIgnored private var queue: ScrobbleQueue
+  @ObservationIgnored private var recentStore: RecentScrobbles
   @ObservationIgnored private var session: StoredSession?
   @ObservationIgnored private var lovedTrackID: String?
   @ObservationIgnored private var tickTask: Task<Void, Never>?
   @ObservationIgnored private var progressTask: Task<Void, Never>?
-  @ObservationIgnored private var signInTask: Task<Void, Never>?
+  @ObservationIgnored private(set) var signInTask: Task<Void, Never>?
+  @ObservationIgnored private(set) var flushTask: Task<Void, Never>?
+  @ObservationIgnored private(set) var loveUpdateTask: Task<Void, Never>?
+  private var loveUpdateID: UUID?
+  var isUpdatingLove: Bool { loveUpdateID != nil }
   @ObservationIgnored private var retryTask: Task<Void, Never>?
-  @ObservationIgnored private var lovedTask: Task<Void, Never>?
+  @ObservationIgnored private(set) var lovedTask: Task<Void, Never>?
   @ObservationIgnored private var isFlushing = false
 
-  init() {
-    let info = Bundle.main.infoDictionary ?? [:]
-    let apiKey = info["LastFMAPIKey"] as? String ?? ""
-    let secret = info["LastFMAPISecret"] as? String ?? ""
-    client = LastFMClient(apiKey: apiKey, secret: secret)
-    isConfigured = !apiKey.isEmpty && !secret.isEmpty
-
-    if let stored = SessionStore.load() {
-      session = stored
-      account = .signedIn(username: stored.username)
-    }
+  init(services: AppModelServices = .live, startsObservers: Bool = true) {
+    client = services.client
+    accountIO = services.accountIO
+    queue = services.queue
+    recentStore = services.recent
+    isConfigured = services.isConfigured
+    session = services.storedSession
+    if let stored = session { account = .signedIn(username: stored.username) }
     recent = recentStore.items
     refreshPendingCount()
+    guard startsObservers else { return }
 
     observer.start { [weak self] snapshot in self?.handle(snapshot) }
     pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -129,13 +132,16 @@ final class AppModel {
       guard let self else { return }
       do {
         let token = try await client.getToken()
-        NSWorkspace.shared.open(client.authorizationURL(token: token))
+        try Task.checkCancellation()
+        accountIO.openAuthorization(client.authorizationURL(token: token))
         // Tokens last 60 minutes; give the user ten to approve.
         let deadline = Date.now.addingTimeInterval(600)
         while Date.now < deadline {
-          try await Task.sleep(for: .seconds(3))
+          try await Task.sleep(for: accountIO.pollInterval)
           do {
-            try await finishSignIn(client.getSession(token: token))
+            let stored = try await client.getSession(token: token)
+            try Task.checkCancellation()
+            finishSignIn(stored)
             return
           } catch LastFMClient.Failure.api(code: 14, message: _) {
             continue // Not approved yet.
@@ -146,8 +152,9 @@ final class AppModel {
       } catch is CancellationError {
         // Cancelled by the user.
       } catch {
+        guard !Task.isCancelled else { return }
         account = .signedOut
-        message = "Couldn't sign in. \(Self.describe(error))"
+        message = "Couldn't sign in. \(LastFMClient.describe(error))"
       }
     }
   }
@@ -163,7 +170,9 @@ final class AppModel {
     signInTask?.cancel()
     retryTask?.cancel()
     lovedTask?.cancel()
-    SessionStore.clear()
+    loveUpdateTask?.cancel()
+    loveUpdateID = nil
+    accountIO.clearSession()
     session = nil
     account = .signedOut
     message = nil
@@ -174,22 +183,15 @@ final class AppModel {
 
   // MARK: Private
 
-  private static func describe(_ error: Error) -> String {
-    switch error {
-    case LastFMClient.Failure.api(_, let message): message
-    case LastFMClient.Failure.network(let message): message
-    case LastFMClient.Failure.badResponse: "Last.fm sent an unexpected response."
-    default: error.localizedDescription
-    }
-  }
-
   private func finishSignIn(_ stored: StoredSession) {
-    SessionStore.save(stored)
+    accountIO.saveSession(stored)
     session = stored
     account = .signedIn(username: stored.username)
     logger.info("signed in as \(stored.username, privacy: .public)")
     // Bring the welcome or Settings window back from the browser.
-    NSApp.activate()
+    accountIO.activate()
+    loveUpdateTask?.cancel()
+    loveUpdateID = nil
     refreshPendingCount()
     lovedTrackID = nil
     if let track = play?.track { refreshLovedState(for: track) }
@@ -200,7 +202,7 @@ final class AppModel {
     pendingCount = session.map { queue.items(for: $0.username).count } ?? 0
   }
 
-  private func handle(_ snapshot: PlayerSnapshot) {
+  func handle(_ snapshot: PlayerSnapshot) {
     perform(tracker.handle(snapshot, at: .now))
     scheduleTick()
   }
@@ -239,9 +241,14 @@ final class AppModel {
 
 extension AppModel {
   func toggleLove() {
-    guard let session, let track = play?.track, let loved = isCurrentTrackLoved else { return }
+    guard !isUpdatingLove, let session, let track = play?.track, let loved = isCurrentTrackLoved else { return }
+    let operation = UUID()
+    loveUpdateID = operation
     isCurrentTrackLoved = !loved
-    Task { [weak self, client] in
+    loveUpdateTask = Task { [weak self, client] in
+      defer {
+        if self?.loveUpdateID == operation { self?.loveUpdateID = nil }
+      }
       do {
         if loved {
           try await client.unlove(track, sessionKey: session.key)
@@ -249,9 +256,9 @@ extension AppModel {
           try await client.love(track, sessionKey: session.key)
         }
       } catch {
-        guard let self, lovedTrackID == track.id else { return }
+        guard let self, self.session == session, lovedTrackID == track.id else { return }
         isCurrentTrackLoved = loved
-        message = "Couldn't update Love on Last.fm. \(Self.describe(error))"
+        message = "Couldn't update Love on Last.fm. \(LastFMClient.describe(error))"
       }
     }
   }
@@ -317,7 +324,7 @@ extension AppModel {
     let batch = Array(queue.items(for: session.username).prefix(50))
     guard !batch.isEmpty else { return }
     isFlushing = true
-    Task { [weak self, client] in
+    flushTask = Task { [weak self, client] in
       let result: Result<[LastFMClient.Outcome], LastFMClient.Failure>
       do {
         result = try await .success(client.scrobble(batch, sessionKey: session.key))
@@ -326,11 +333,18 @@ extension AppModel {
       } catch {
         result = .failure(.network(error.localizedDescription))
       }
-      self?.finishFlush(batch: batch, result: result)
+      self?.finishFlush(batch: batch, session: session, result: result)
     }
   }
 
-  private func finishFlush(batch: [Scrobble], result: Result<[LastFMClient.Outcome], LastFMClient.Failure>) {
+  private func updateMessage(_ value: String?, for requestSession: StoredSession) {
+    if session == requestSession { message = value }
+  }
+
+  private func finishFlush(
+    batch: [Scrobble], session requestSession: StoredSession,
+    result: Result<[LastFMClient.Outcome], LastFMClient.Failure>
+  ) {
     isFlushing = false
     let ids = Set(batch.map(\.id))
     switch result {
@@ -345,14 +359,20 @@ extension AppModel {
       logger.info("sent \(batch.count) scrobbles")
       queue.remove(ids: ids)
       recentStore.update(statuses)
-      message = nil
+      updateMessage(nil, for: requestSession)
       flush()
     case .failure(let failure) where failure.needsReauth:
-      SessionStore.clear()
+      guard session == requestSession else { flush()
+        return
+      }
+      accountIO.clearSession()
       session = nil
       account = .signedOut
       message = "Last.fm signed you out. Sign in again to send waiting scrobbles."
     case .failure(let failure) where failure.isTransient:
+      guard session == requestSession else { flush()
+        return
+      }
       logger.error("send failed, will retry: \(String(describing: failure), privacy: .public)")
       retryTask?.cancel()
       retryTask = Task { [weak self] in
@@ -365,7 +385,7 @@ extension AppModel {
       logger.error("dropping \(batch.count) scrobbles: \(String(describing: failure), privacy: .public)")
       queue.remove(ids: ids)
       recentStore.update(Dictionary(uniqueKeysWithValues: ids.map { ($0, .rejected) }))
-      message = "Last.fm rejected some scrobbles. \(Self.describe(failure))"
+      updateMessage("Last.fm rejected some scrobbles. \(LastFMClient.describe(failure))", for: requestSession)
     }
     recent = recentStore.items
     refreshPendingCount()
