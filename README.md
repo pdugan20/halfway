@@ -13,7 +13,9 @@ or four minutes, whichever comes first.
 - Sign in with Last.fm through your browser
 - Now playing updates and scrobbles for Apple Music, including streamed tracks
 - Offline queue that sends waiting scrobbles when you're back online
-- Pause scrobbling and Open at Login from the menu
+- Welcome window on first launch for sign-in and Open at Login
+- Settings window (General and Account) for Open at Login, pausing scrobbles, and your account
+- Menu bar panel with the current song and a countdown to its scrobble
 
 Halfway runs in the App Sandbox and needs no Automation permission. It listens
 to the playback notification Music already broadcasts.

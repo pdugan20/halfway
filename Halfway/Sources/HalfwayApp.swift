@@ -12,5 +12,19 @@ struct HalfwayApp: App {
         .accessibilityLabel("Halfway")
     }
     .menuBarExtraStyle(.window)
+
+    Window("Welcome to Halfway", id: WelcomeView.windowID) {
+      WelcomeView(model: model)
+    }
+    .windowStyle(.hiddenTitleBar)
+    .windowResizability(.contentSize)
+    .windowBackgroundDragBehavior(.enabled)
+    .restorationBehavior(.disabled)
+    .defaultPosition(.center)
+    .defaultLaunchBehavior(model.hasCompletedSetup ? .suppressed : .presented)
+
+    Settings {
+      SettingsView(model: model)
+    }
   }
 }

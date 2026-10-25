@@ -12,6 +12,11 @@ macOS menu bar app (SwiftUI `MenuBarExtra`) that scrobbles Apple Music plays to 
 
 ## Project
 
+- `.agents/skills` is canonical for repository skills; Claude reads the same files through `.claude/skills` symlinks.
+- `skills-lock.json` locks `axiom-macos` from `charleswiltgen/axiom` at `v27.6.1` (MIT, added 2026-10-24). Use its
+  `direct-distribution.md` for signing, notarization and DMGs and `sandbox-and-file-access.md` for entitlements.
+  Update with `npx skills update -p -y` and review the diff; do not hand-edit the snapshot. When it conflicts with
+  this file (for example by recommending a broader entitlement), this file wins.
 - `project.yml` (XcodeGen) owns the Xcode project. Run `xcodegen generate` after adding, moving, or removing files.
   Never commit `Halfway.xcodeproj`.
 - Last.fm credentials live in git-ignored `Config/Secrets.xcconfig` and reach the app through `Info.plist`

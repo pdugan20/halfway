@@ -1,13 +1,16 @@
 import SwiftUI
 
+/// The menu bar panel: what's playing, its scrobble status, and the way to Settings.
 struct MenuContent: View {
-  @Bindable var model: AppModel
+  let model: AppModel
+  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       NowPlayingView(model: model)
-      Divider()
-      account
+      if model.isConfigured, !model.isSignedIn {
+        signIn
+      }
       if let message = model.message {
         Text(message)
           .font(.callout)
@@ -15,77 +18,40 @@ struct MenuContent: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       Divider()
-      SettingRow("Scrobbling", isOn: $model.isScrobblingEnabled)
-      SettingRow(
-        "Open at Login",
-        isOn: Binding(get: { model.opensAtLogin }, set: { model.setOpensAtLogin($0) })
-      )
-      Divider()
-      footer
+      HStack {
+        Button("Settings…") {
+          openSettings()
+          NSApp.activate()
+        }
+        .keyboardShortcut(",")
+        Spacer()
+        Button("Quit Halfway") { NSApplication.shared.terminate(nil) }
+          .keyboardShortcut("q")
+      }
+      .buttonStyle(.borderless)
     }
     .padding(14)
-    .frame(width: 290)
+    .frame(width: 280)
   }
 
   @ViewBuilder
-  private var account: some View {
-    if !model.isConfigured {
-      Text("This build is missing its Last.fm API key.")
-        .foregroundStyle(.secondary)
+  private var signIn: some View {
+    if model.account == .waitingForApproval {
+      HStack(spacing: 8) {
+        ProgressView()
+          .controlSize(.small)
+        Text("Approve Halfway in your browser")
+          .font(.callout)
+        Spacer()
+        Button("Cancel") { model.cancelSignIn() }
+          .buttonStyle(.borderless)
+      }
     } else {
-      switch model.account {
-      case .signedOut:
-        Button("Sign In with Last.fm") { model.signIn() }
-          .controlSize(.large)
-          .buttonStyle(.borderedProminent)
-          .frame(maxWidth: .infinity)
-      case .waitingForApproval:
-        HStack(spacing: 8) {
-          ProgressView().controlSize(.small)
-          Text("Approve Halfway in your browser…")
-          Spacer()
-          Button("Cancel") { model.cancelSignIn() }
-        }
-      case .signedIn:
-        if model.pendingCount > 0 {
-          Text("^[\(model.pendingCount) scrobble](inflect: true) waiting to send")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-      }
+      Button("Sign In with Last.fm") { model.signIn() }
+        .buttonStyle(.glassProminent)
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
     }
-  }
-
-  private var footer: some View {
-    HStack {
-      if case .signedIn(let username) = model.account, let url = model.profileURL {
-        Link(username, destination: url)
-        Spacer()
-        Button("Sign Out") { model.signOut() }
-      } else {
-        Spacer()
-      }
-      Button("Quit") { NSApplication.shared.terminate(nil) }
-        .keyboardShortcut("q")
-    }
-    .buttonStyle(.borderless)
-  }
-}
-
-private struct SettingRow: View {
-  let title: String
-  @Binding var isOn: Bool
-
-  init(_ title: String, isOn: Binding<Bool>) {
-    self.title = title
-    _isOn = isOn
-  }
-
-  var body: some View {
-    Toggle(title, isOn: $isOn)
-      .toggleStyle(.switch)
-      .controlSize(.small)
-      .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 

@@ -18,6 +18,9 @@ final class AppModel {
   private(set) var pendingCount = 0
   private(set) var message: String?
   private(set) var opensAtLogin = SMAppService.mainApp.status == .enabled
+  /// macOS registered the login item but the user switched it off in System Settings.
+  private(set) var loginItemNeedsApproval = SMAppService.mainApp.status == .requiresApproval
+  private(set) var hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
   var isScrobblingEnabled = UserDefaults.standard.object(forKey: "scrobblingEnabled") as? Bool ?? true {
     didSet { UserDefaults.standard.set(isScrobblingEnabled, forKey: "scrobblingEnabled") }
   }
@@ -68,6 +71,18 @@ final class AppModel {
     return URL(string: "https://www.last.fm/user/")?.appending(path: username)
   }
 
+  var isSignedIn: Bool {
+    if case .signedIn = account { return true }
+    return false
+  }
+
+  // MARK: Setup
+
+  func completeSetup() {
+    hasCompletedSetup = true
+    UserDefaults.standard.set(true, forKey: "hasCompletedSetup")
+  }
+
   // MARK: Account
 
   func signIn() {
@@ -90,6 +105,8 @@ final class AppModel {
             session = stored
             account = .signedIn(username: stored.username)
             logger.info("signed in as \(stored.username, privacy: .public)")
+            // Bring the welcome or Settings window back from the browser.
+            NSApp.activate()
             flush()
             return
           } catch LastFMClient.Failure.api(code: 14, message: _) {
@@ -134,7 +151,23 @@ final class AppModel {
     } catch {
       message = "Couldn't change Open at Login. \(error.localizedDescription)"
     }
-    opensAtLogin = SMAppService.mainApp.status == .enabled
+    refreshLoginItemStatus()
+  }
+
+  /// Re-reads the login item, which the user can also change in System Settings.
+  func refreshLoginItemStatus() {
+    let status = SMAppService.mainApp.status
+    opensAtLogin = status == .enabled
+    loginItemNeedsApproval = status == .requiresApproval
+  }
+
+  func openLoginItemsSettings() {
+    SMAppService.openSystemSettingsLoginItems()
+  }
+
+  func sendNow() {
+    retryTask?.cancel()
+    flush()
   }
 
   // MARK: Playback

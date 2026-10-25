@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "axiom-macos": {
+      "source": "charleswiltgen/axiom",
+      "ref": "v27.6.1",
+      "sourceType": "github",
+      "skillPath": ".claude-plugin/plugins/axiom/skills/axiom-macos/SKILL.md",
+      "computedHash": "8e3faedbff0343a813a1de7e506ebea707913d5a4cd8a6e8ceb88f565db28206"
+    }
+  }
+}

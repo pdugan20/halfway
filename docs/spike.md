@@ -19,8 +19,23 @@ to ship as signed DMGs now and on the Mac App Store later?
 ## Version 1 scope
 
 Sign in and out, now playing, scrobbles, offline queue, pause scrobbling, Open
-at Login, quit. Loved tracks, history, stats, other players, and a settings
-window are out of scope.
+at Login, quit, a first-launch welcome window, a Settings window (General and
+Account), and an Icon Composer app icon.
+
+## Deferred
+
+| Item | Why deferred |
+| --- | --- |
+| Loved tracks (sync Apple Music favorites to Last.fm loves) | Not needed to replace NepTunes' scrobbling |
+| Recent scrobble history in the menu | Last.fm already shows it; adds storage and UI |
+| Listening stats | Same |
+| Players other than Apple Music | Each player broadcasts differently |
+| Picking up a song already playing at launch | Music only reports on change; asking it needs Apple Events |
+| Scripting-targets fallback for missing track length | Only if the playback test shows streamed tracks lack `Total Time` |
+| Keeping waiting scrobbles across sign-out | Sign-out currently clears the queue |
+| About window | Version shows in Settings › Account |
+| Auto-updates for DMG builds (Sparkle) | Not needed until there are outside users |
+| Mac App Store build and listing | After the DMG release; name availability unchecked |
 
 ## Evidence so far
 
