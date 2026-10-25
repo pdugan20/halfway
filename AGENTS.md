@@ -12,6 +12,11 @@ macOS menu bar app (SwiftUI `MenuBarExtra`) that scrobbles Apple Music plays to 
 
 ## Project
 
+- `.agents/skills` is canonical for repository skills; Claude reads the same files through `.claude/skills` symlinks.
+- `skills-lock.json` locks `axiom-macos` from `charleswiltgen/axiom` at `v27.6.1` (MIT, added 2026-10-24). Use its
+  `direct-distribution.md` for signing, notarization and DMGs and `sandbox-and-file-access.md` for entitlements.
+  Update with `npx skills update -p -y` and review the diff; do not hand-edit the snapshot. When it conflicts with
+  this file (for example by recommending a broader entitlement), this file wins.
 - `project.yml` (XcodeGen) owns the Xcode project. Run `xcodegen generate` after adding, moving, or removing files.
   Never commit `Halfway.xcodeproj`.
 - Last.fm credentials live in git-ignored `Config/Secrets.xcconfig` and reach the app through `Info.plist`
@@ -32,7 +37,8 @@ macOS menu bar app (SwiftUI `MenuBarExtra`) that scrobbles Apple Music plays to 
 
 ## Constraints
 
-- Stay App Sandbox compatible (future Mac App Store release). Entitlements: `app-sandbox`, `network.client` only.
+- Stay App Sandbox compatible (future Mac App Store release). Entitlements: `app-sandbox`, `network.client`, and Sparkle’s two app-scoped installer/status Mach lookup
+  exceptions for direct-distribution updates (see `docs/automatic-updates.md`).
   Adding Apple Events or a scripting-targets exception needs a stated reason.
 - Do not use private frameworks (e.g. MediaRemote).
 - Swift 6 with `MainActor` default isolation; mark pure model types `nonisolated`.
@@ -44,9 +50,9 @@ Airbnb Swift style via SwiftFormat and SwiftLint (`.swiftformat`, `.swiftlint.ym
 
 ## Release
 
-Tag `vX.Y.Z` to run `.github/workflows/release.yml`: Developer ID signing, notarization, DMG, GitHub Release.
+Tag `vX.Y.Z` to run `.github/workflows/release.yml`: Developer ID archive/export, notarization, branded DMG, signed Sparkle feed, GitHub Release.
 Required secrets: `DEVELOPER_ID_CERT_BASE64`, `DEVELOPER_ID_CERT_PASSWORD`, `NOTARY_API_KEY`, `NOTARY_API_KEY_ID`,
-`NOTARY_API_ISSUER`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`.
+`NOTARY_API_ISSUER`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`, `SPARKLE_PRIVATE_KEY`.
 
 ## Code review rules
 

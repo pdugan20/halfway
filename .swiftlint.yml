@@ -44,6 +44,8 @@ disabled_rules:
   - identifier_name
   - opening_brace
   - blanket_disable_command
+  # Conflicts with SwiftFormat's `--operator-func no-space`, which owns operator spacing.
+  - function_name_whitespace
 
 file_length:
   warning: 400

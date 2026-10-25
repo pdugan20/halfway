@@ -1,0 +1,20 @@
+#!/bin/bash
+# Input must be the final, stapled DMG: its bytes must not change after signing.
+# CI passes SPARKLE_PRIVATE_KEY through stdin; local use reads only the app's Keychain account.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+TASK_DIRECTORY="${1:?Usage: scripts/generate-update-feed ARCHIVES_DIRECTORY RELEASE_TAG}"
+TASK_TAG="${2:?Release tag is required}"
+[[ "$TASK_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected a stable vX.Y.Z tag' >&2; exit 1; }
+TASK_DIRECTORY=$(cd "$TASK_DIRECTORY" && pwd)
+TASK_TOOLS="$PWD/build/sparkle-tools/bin"
+TASK_REPO="https://github.com/pdugan20/halfway/releases"
+TASK_ARGS=(--maximum-deltas 0 --download-url-prefix "$TASK_REPO/download/$TASK_TAG/"
+  --full-release-notes-url "$TASK_REPO/tag/$TASK_TAG" --link "https://github.com/pdugan20/halfway")
+if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+  printf '%s' "$SPARKLE_PRIVATE_KEY" | "$TASK_TOOLS/generate_appcast" --ed-key-file - \
+    "${TASK_ARGS[@]}" "$TASK_DIRECTORY"
+else
+  [[ "${CI:-}" != "true" ]] || { echo 'Missing SPARKLE_PRIVATE_KEY' >&2; exit 1; }
+  "$TASK_TOOLS/generate_appcast" --account com.patrickdugan.halfway "${TASK_ARGS[@]}" "$TASK_DIRECTORY"
+fi

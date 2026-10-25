@@ -19,8 +19,26 @@ to ship as signed DMGs now and on the Mac App Store later?
 ## Version 1 scope
 
 Sign in and out, now playing, scrobbles, offline queue, pause scrobbling, Open
-at Login, quit. Loved tracks, history, stats, other players, and a settings
-window are out of scope.
+at Login, quit, a first-launch welcome window, a Settings window (General and
+Account), and an Icon Composer app icon.
+
+## Scope decisions (2026-10-24)
+
+| Item | Decision | Tracking |
+| --- | --- | --- |
+| Keep waiting scrobbles across sign-out | Built. Plays are tagged with their account and sent only to it; plays over 14 days old are dropped because Last.fm ignores them | — |
+| Recent scrobbles in the menu | Built. Last 10 kept, 5 shown, with sent, waiting, ignored or rejected status | — |
+| Love button | Built. Heart in the menu loves or unloves the current track; state comes from `track.getInfo` | — |
+| Menu bar icon progress | Built. Ring fills in sixteenths toward the scrobble point | — |
+| About link | Built. Settings › Account opens the standard About panel | — |
+| Real playback test | Next, owner-run | [#1](https://github.com/pdugan20/halfway/issues/1) |
+| Sync Apple Music favorites to Last.fm loves | After the playback test shows what Music reports | [#2](https://github.com/pdugan20/halfway/issues/2) |
+| Fallback for missing streamed track length | Only if the playback test shows the gap | [#3](https://github.com/pdugan20/halfway/issues/3) |
+| Sparkle auto-updates and first DMG release | With the release batch | [#4](https://github.com/pdugan20/halfway/issues/4) |
+| Pick up a song already playing at launch | Deferred; needs Apple Events | [#5](https://github.com/pdugan20/halfway/issues/5) |
+| Mac App Store build and listing | After the DMG release | [#6](https://github.com/pdugan20/halfway/issues/6) |
+| Listening stats | Won't build; Last.fm already does this | — |
+| Players other than Apple Music | Won't build; keeps Halfway an Apple Music tool | — |
 
 ## Evidence so far
 
