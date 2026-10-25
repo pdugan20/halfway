@@ -8,6 +8,7 @@ struct AppModelServices {
     var openAuthorization: @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     var activate: @MainActor () -> Void = { NSApp.activate() }
     var pollInterval: Duration = .seconds(3)
+    var now: @MainActor () -> Date = { .now }
   }
 
   var client: any LastFMService

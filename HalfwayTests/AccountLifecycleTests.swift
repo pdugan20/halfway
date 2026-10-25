@@ -21,6 +21,25 @@ struct AccountLifecycleTests {
   }
 
   @Test
+  func cancelledExpiredAttemptCannotOverwriteTheNewSignIn() async throws {
+    let context = Context()
+    context.model.signIn()
+    let oldAttempt = context.model.signInTask
+    try await wait { context.client.sessions.count == 1 }
+    context.now = context.now.addingTimeInterval(601)
+    context.model.signIn()
+    let newAttempt = context.model.signInTask
+    try await wait { context.client.sessions.count == 2 }
+    context.client.sessions[0].resume(throwing: LastFMClient.Failure.api(code: 14, message: "Fixture not approved"))
+    await oldAttempt?.value
+    #expect(context.model.account == .waitingForApproval)
+    #expect(context.model.message == nil)
+    context.client.sessions[1].resume(returning: accountB)
+    await newAttempt?.value
+    #expect(context.model.account == .signedIn(username: accountB.username))
+  }
+
+  @Test
   func expiredOldSessionCannotSignOutTheNewAccountOrStopItsQueue() async throws {
     let context = Context(session: accountA, queuedFor: [accountA.username, accountB.username])
     context.model.sendNow()
@@ -116,6 +135,7 @@ private final class Context {
   let track = Track(id: "fixture", title: "Song", artist: "Artist", album: nil, albumArtist: nil, duration: 200)
   var saved: [StoredSession] = []
   var clears = 0
+  var now = Date.now
   private let initialSession: StoredSession?
   private let queuedAccounts: [String]
   lazy var model: AppModel = makeModel()
@@ -132,7 +152,8 @@ private final class Context {
     let io = AppModelServices.AccountIO(
       saveSession: { [weak self] in self?.saved.append($0) },
       clearSession: { [weak self] in self?.clears += 1 },
-      openAuthorization: { _ in }, activate: { }, pollInterval: .zero
+      openAuthorization: { _ in }, activate: { }, pollInterval: .zero,
+      now: { [weak self] in self?.now ?? .now }
     )
     return AppModel(services: AppModelServices(
       client: client, storedSession: initialSession, queue: queue,

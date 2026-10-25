@@ -135,8 +135,8 @@ final class AppModel {
         try Task.checkCancellation()
         accountIO.openAuthorization(client.authorizationURL(token: token))
         // Tokens last 60 minutes; give the user ten to approve.
-        let deadline = Date.now.addingTimeInterval(600)
-        while Date.now < deadline {
+        let deadline = accountIO.now().addingTimeInterval(600)
+        while accountIO.now() < deadline {
           try await Task.sleep(for: accountIO.pollInterval)
           do {
             let stored = try await client.getSession(token: token)
@@ -147,6 +147,7 @@ final class AppModel {
             continue // Not approved yet.
           }
         }
+        try Task.checkCancellation()
         account = .signedOut
         message = "Sign-in timed out. Try again."
       } catch is CancellationError {
