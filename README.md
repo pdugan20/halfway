@@ -6,7 +6,7 @@ Music to [Last.fm](https://www.last.fm). Sign in once and it does the rest.
 It is named after Last.fm's rule: a song counts once you've heard half of it,
 or four minutes, whichever comes first.
 
-> Status: early spike. Not yet released.
+> Status: early preview. [Download the latest release](https://github.com/pdugan20/halfway/releases/latest).
 
 ## Features
 
@@ -26,6 +26,16 @@ to the playback notification Music already broadcasts.
 ## Requirements
 
 macOS 26 or newer. Development needs Xcode 26 or newer and Homebrew.
+
+## Install
+
+Download the latest DMG from [GitHub Releases](https://github.com/pdugan20/halfway/releases/latest).
+Open it, drag Halfway to Applications, and launch Halfway. It appears in the menu bar.
+Sign in with Last.fm in your browser, then start a song in Music.
+
+Updates download quietly and install when you quit. You can also choose **Update and Relaunch**
+in the panel, or check manually in Settings. See [release checks](docs/release-checks.md) for the
+first-install and real-update test paths.
 
 ## Development
 
